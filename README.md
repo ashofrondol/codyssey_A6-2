@@ -11,6 +11,7 @@
 - [최종 결과물](#최종-결과물)
 - [프로젝트 구조](#프로젝트-구조)
 - [개발 환경과 제약 사항](#개발-환경과-제약-사항)
+- [데이터셋 후보](#데이터셋-후보)
 - [실행 방법](#실행-방법)
 - [할 일](#할-일)
 - [보너스 과제](#보너스-과제)
@@ -70,6 +71,7 @@ codyssey_A6-2/
 │   ├── baseline_comparison.md  # (예정) 베이스라인 비교표
 │   └── leakage.md              # (예정) 누수 방지 근거
 ├── figures/                    # (예정) 필수 시각화 4종
+├── data/                       # (예정) 이미지·시계열 원본 데이터. 용량과 라이선스 때문에 git에서 제외
 ├── docs/
 │   └── A6-2.pdf                # 과제 명세
 └── README.md
@@ -117,6 +119,83 @@ codyssey_A6-2/
 | 환율 데이터 | yfinance/FRED | 거시경제 변수 | 중 |
 | 전력 수요 데이터 | UCI/Kaggle | 계절성 두드러짐 | 중~상 |
 | 날씨 데이터 | Open-Meteo API | 다변량 시계열 | 중 |
+
+## 데이터셋 후보
+
+명세의 데이터 조건을 채울 수 있는 공개 데이터셋을 조사한 결과다(2026-11-23 기준). 라이선스는 "확인"이라고 적은 것만 원문 페이지에서 직접 확인했다.
+
+**명세가 데이터에 요구하는 것**
+
+| 필요한 것 | 어디서 필요한가 |
+|---|---|
+| 이미지 분류 데이터, 클래스당 50장 미만으로 학습 | 할 일 1 (트랙 A) |
+| 오분류 이미지 최소 30건 (사람이 직접 보고 태깅) | 최종 결과물 오차 분석표, 할 일 1 |
+| 오분류 이미지 갤러리 (태그별 묶음) | 할 일 5 (필수 시각화) |
+| 1개 티커, 최소 3년 일봉 | 할 일 2 (트랙 B) |
+| Train/Validation/Test = 7/1/2, 시간순 분할 | 할 일 2, 4 |
+| 인터넷이 안 될 때 쓸 시계열 CSV | 개발 환경 ("제공 CSV 파일") |
+
+### 먼저 확인할 것: 제공 CSV 파일
+
+명세는 "인터넷 불가 시 **제공 CSV 파일** 사용 가능"이라고 하지만 그 파일이 어디 있는지는 적혀 있지 않다. 과정에서 주는 CSV가 있으면 트랙 B는 그것이 가장 확실하다. 운영진에게 먼저 위치와 내용(종목, 기간)을 확인한다. 없으면 아래 트랙 B 추천처럼 처음 한 번 받은 데이터를 `data/`에 CSV로 저장해 두고 그 파일로 실험한다.
+
+### 트랙 A 추천: Oxford-IIIT Pet에서 클래스 몇 개를 골라 쓰기
+
+[Oxford-IIIT Pet](https://www.robots.ox.ac.uk/~vgg/data/pets/)은 고양이·개 37품종, 품종마다 약 200장인 사진 데이터다. 라이선스는 CC BY-SA 4.0 (확인)이고, 원문 페이지가 연구·상업 목적 모두 쓸 수 있다고 밝힌다. 명세 추천 표의 Dogs vs Cats는 라이선스가 불명확해서(아래 비교 표) 같은 "개 vs 고양이" 문제를 라이선스가 분명한 이 데이터로 대신한다.
+
+| 요구사항 | 해결 방법 |
+|---|---|
+| 클래스당 50장 미만 | 고른 클래스마다 Train용으로 50장 미만(예: 30장)만 무작위로 뽑는다. 뽑을 때 seed를 고정하고 뽑힌 파일 목록을 저장한다 |
+| 오분류 최소 30건 | 품종당 약 200장이라 Train에 30장을 써도 품종당 170장 정도가 남는다. 이것을 Validation과 Test로 나누면 Test가 충분히 커져 오분류 30건을 모으기 쉽다 |
+| 클래스 유사성 태그 | 생김새가 비슷한 품종(예: 고양이 품종 몇 개)을 고르면 "클래스 유사성" 오분류를 관찰할 수 있다. 쉬운 문제를 원하면 품종 라벨을 개/고양이 2종으로 묶는다 |
+| 배경/잡음 태그 | 이 데이터는 머리 위치 박스와 배경·전경을 나눈 마스크(trimap)를 함께 주어, "배경이 복잡해서 틀렸는지"를 확인할 때 참고할 수 있다 |
+| 내려받기 | 원문 페이지에서 이미지와 주석 묶음(합계 약 800MB)을 받는다. Torchvision에도 `OxfordIIITPet` 데이터셋 클래스가 있다 |
+
+### 트랙 B 추천: yfinance 주가 1종목 + CSV로 저장해 두기
+
+명세의 기본안(yfinance 주가)을 따른다. 예를 들어 명세 코드 예시처럼 `AAPL`을 2020-01-01부터 받으면 약 7년치 일봉이 되어 "최소 3년" 조건을 넉넉히 넘는다.
+
+| 요구사항 | 해결 방법 |
+|---|---|
+| 1개 티커, 최소 3년 일봉 | `yf.download("AAPL", start="2020-01-01")` 같은 방식으로 한 종목을 받는다 |
+| 7/1/2 시간순 분할 | 날짜순으로 정렬된 상태 그대로 앞 70%, 다음 10%, 마지막 20%로 자른다 |
+| 같은 결과 다시 만들기 | 받은 날짜가 다르면 데이터 끝이 달라지고 수정주가도 바뀔 수 있다. 처음 받은 데이터를 `data/`에 CSV로 저장하고, 이후 실험은 그 파일로만 한다. 받은 날짜를 리포트에 적는다 |
+| 인터넷이 안 될 때 | 위에서 저장한 CSV를 쓴다(제공 CSV가 따로 있으면 그것을 우선한다) |
+
+**라이선스 주의**: yfinance 라이브러리 자체는 Apache-2.0 (확인)이다. 하지만 데이터는 Yahoo의 것이고, yfinance README는 Yahoo Finance API가 개인 용도 전용이라는 점과 Yahoo 이용 약관을 직접 확인하라는 점을 밝힌다 (확인). 그래서 받은 주가 CSV는 레포에 올리지 않는다.
+
+**라이선스가 분명한 대안: FRED 원/달러 환율 ([DEXKOUS](https://fred.stlouisfed.org/series/DEXKOUS))**. 미국 연방준비제도 이사회가 발표하는 원/달러 일별 환율이고, FRED 페이지에 "Public Domain: Citation Requested" (확인) 표시가 있다. API 키 없이 `https://fred.stlouisfed.org/graph/fredgraph.csv?id=DEXKOUS` 주소로 CSV를 바로 받을 수 있다(2026-11-23에 CSV 응답을 확인했다). 명세의 대체 옵션 표에 있는 "환율 데이터 (yfinance/FRED)"에 해당한다. 휴일에는 값이 비어 있으니(`.`로 표시) 결측치 처리 방법을 리포트에 적는다.
+
+### 후보 전체 비교
+
+**트랙 A (이미지)**
+
+| 데이터셋 | 라이선스 | 규모·형식 | 판단 |
+|---|---|---|---|
+| [Oxford-IIIT Pet](https://www.robots.ox.ac.uk/~vgg/data/pets/) | CC BY-SA 4.0 (확인) | 37종, 종마다 약 200장 JPG, 합계 약 800MB | **트랙 A 1순위**. 개/고양이 2종으로도, 품종 몇 개로도 쓸 수 있다 |
+| [Dogs vs Cats (Kaggle 대회)](https://www.kaggle.com/competitions/dogs-vs-cats) | 불명확 | JPG, 2종 | 명세 추천 1순위지만 Kaggle 규칙 페이지를 읽지 못했고, Kaggle 계정과 대회 규칙 동의가 필요하다. Hugging Face 사본 카드도 라이선스를 "unknown"으로 적는다 |
+| [Kaggle Cats and Dogs Dataset (Microsoft 배포)](https://www.microsoft.com/en-us/download/details.aspx?id=54765) | 명시 없음 (원문 페이지에 라이선스 조항이 없다) | zip 786.7MB | 위 대회 데이터를 Microsoft가 직접 배포하는 것. 계정 없이 받을 수 있지만 라이선스가 없다. Hugging Face 사본 카드에 따르면 깨진 이미지가 1,738장 있다 |
+| [Food-101](https://data.vision.ee.ethz.ch/cvl/datasets_extra/food-101/) | 명시 없음 (원문 페이지에 라이선스가 없다) | 101종, 종마다 학습 750장 + 테스트 250장, 5GB | 일부 클래스만 써도 5GB 전체를 받아야 한다. 원문 페이지가 학습 이미지에 일부러 정리하지 않은 잡음과 "가끔 틀린 라벨"이 있다고 밝혀서 "라벨 오류" 태그를 관찰하기에는 좋다 |
+| [Oxford Flowers 102](https://www.robots.ox.ac.uk/~vgg/data/flowers/102/) | 명시 없음 (원문 페이지에 라이선스가 없다) | 102종, 종마다 40~258장 | 미세 분류라 어렵다. 40장뿐인 종은 Train에 쓰고 나면 Validation·Test에 남는 장수가 적으니, 장수가 많은 종을 고른다 |
+| [CIFAR-10](https://cave.cs.toronto.edu/kriz/cifar.html) | 명시 없음 (원문 페이지는 기술 보고서 인용만 요청) | 10종, 종마다 학습 5,000장 + 테스트 1,000장, 32×32, 약 162MB | 받기 쉽고 가볍다. 다만 32×32로 작아서 사전 학습 모델 입력 크기(보통 224×224)로 키워야 하고, 사람이 보고 실패 원인을 태깅하기 어렵다 |
+
+**트랙 B (시계열)**
+
+| 데이터 | 라이선스 | 규모·형식 | 판단 |
+|---|---|---|---|
+| [yfinance](https://github.com/ranaroussi/yfinance) 주가 1종목 | 라이브러리 Apache-2.0 (확인), 데이터는 Yahoo 약관(개인 용도) | 일봉, 원하는 기간 | **트랙 B 1순위** (명세 기본안). 받은 CSV는 레포에 올리지 않는다 |
+| [FRED DEXKOUS](https://fred.stlouisfed.org/series/DEXKOUS) (원/달러 환율) | Public Domain: Citation Requested (확인) | 일별, CSV 바로 받기 | **라이선스가 분명한 대안**. 휴일 결측이 있다 |
+| yfinance 환율 (예: `KRW=X`) | 위 yfinance와 같음 | 일봉 | 명세 대체 옵션. 주가와 같은 코드로 받을 수 있다 |
+| [UCI Individual Household Electric Power Consumption](https://archive.ics.uci.edu/dataset/235/individual+household+electric+power+consumption) | CC BY 4.0 (확인) | 2006-12 ~ 2010-11, 1분 간격 2,075,259행, 세미콜론 구분 텍스트 126.8MB (zip 19.7MB), 결측 약 1.25% | 계절성이 뚜렷하다. 하루 단위로 합치면 약 3.9년치 일별 데이터가 되어 3년 조건을 넘는다. 합치기와 결측 처리가 필요해 난이도가 높다 |
+| [Open-Meteo](https://open-meteo.com/en/terms) 과거 날씨 | 데이터 CC BY 4.0 (확인) | API로 받는 다변량 시계열 | 무료 API는 비상업 용도 전용이고 하루 10,000회 미만 등 호출 제한이 있다 (확인). 여러 변수를 함께 쓸 수 있지만 "티커" 개념이 없어 1개 지역·1개 대상 변수로 정해야 한다 |
+
+### 데이터를 다룰 때 주의할 점
+
+- **데이터 파일은 레포에 올리지 않는다.** 이미지(수백MB~수GB)와 주가 CSV 모두 `data/` 폴더에 두고 `.gitignore`로 제외한다. README에는 받는 주소, 받은 날짜, 출처, 라이선스만 적는다.
+- **오분류 이미지 갤러리도 데이터의 일부다.** 갤러리 그림(`figures/`)은 원본 사진을 담으므로 레포에 올리면 사진을 다시 배포하는 셈이다. Oxford-IIIT Pet(CC BY-SA 4.0)이면 그림에 출처와 라이선스를 적고, 그 그림도 같은 CC BY-SA 4.0 조건으로 공개한다. 라이선스가 불명확한 데이터(Dogs vs Cats, Food-101 등)를 쓰면 갤러리를 공개 레포에 올려도 되는지 운영진에게 확인한다.
+- **출처 표기 예**: `Parkhi, O. M., Vedaldi, A., Zisserman, A., Jawahar, C. V. (2012). Cats and Dogs. CVPR.` (Oxford-IIIT Pet), `Board of Governors of the Federal Reserve System (US), South Korean Won to U.S. Dollar Spot Exchange Rate [DEXKOUS], retrieved from FRED, Federal Reserve Bank of St. Louis.`
+- **Few-shot 표본 고정**: 클래스당 50장 미만을 뽑을 때 seed를 고정하고 뽑힌 파일 이름 목록을 저장해야 Linear Probing과 Fine-tuning을 같은 데이터로 공정하게 비교할 수 있다.
+- **같은 사진이 두 구간에 들어가지 않게 한다.** 이미지는 Train·Validation·Test로 나눌 때 파일 단위로 겹치지 않는지 확인한다. 시계열은 [할 일 4](#4-데이터-누수-data-leakage-방지-체크포인트)의 체크포인트를 따른다.
 
 ## 실행 방법
 
@@ -282,4 +361,5 @@ Attention은 긴 입력 가운데 중요한 부분에 더 집중하게 하는 �
 - 과제 명세: [docs/A6-2.pdf](docs/A6-2.pdf)
 - 이미지 데이터셋: Kaggle(Dogs vs Cats, Food-101), TorchVision(Food-101, Oxford Flowers 102, CIFAR-10)
 - 시계열 데이터: yfinance(주가, 환율), FRED(환율), UCI/Kaggle(전력 수요), Open-Meteo API(날씨)
+- 데이터셋 후보와 라이선스: 위 [데이터셋 후보](#데이터셋-후보) 절. 실제로 사용한 데이터의 출처와 라이선스를 여기에 적는다.
 - 명세 데이터셋 가이드: Kaggle 데이터셋은 `shutil`, `os`로 필요한 클래스 폴더만 골라 복사해 실험 환경을 가볍게 만드는 방법을 안내한다.
